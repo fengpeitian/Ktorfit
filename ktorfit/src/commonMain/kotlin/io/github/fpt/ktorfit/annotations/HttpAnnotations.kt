@@ -54,6 +54,10 @@ annotation class Body
 
 @Target(AnnotationTarget.VALUE_PARAMETER)
 @Retention(AnnotationRetention.RUNTIME)
+annotation class JsonField(val name: String = "")
+
+@Target(AnnotationTarget.VALUE_PARAMETER)
+@Retention(AnnotationRetention.RUNTIME)
 annotation class Path(val name: String = "")
 
 @Target(AnnotationTarget.VALUE_PARAMETER)

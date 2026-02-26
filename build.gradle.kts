@@ -17,5 +17,5 @@ allprojects {
     val propGroup = findProperty("group") as String?
     val propVersion = findProperty("version") as String?
     group = propGroup ?: "io.github.fpt.ktorfit"
-    version = propVersion ?: (System.getenv("JITPACK_VERSION") ?: "1.0.0")
+    version = propVersion ?: (System.getenv("JITPACK_VERSION") ?: "1.1.0")
 }

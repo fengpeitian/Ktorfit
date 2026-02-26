@@ -1,6 +1,7 @@
 package io.github.fpt.ktorfit.ksp
 
 import io.github.fpt.ktorfit.annotations.Body
+import io.github.fpt.ktorfit.annotations.JsonField
 import io.github.fpt.ktorfit.annotations.DELETE
 import io.github.fpt.ktorfit.annotations.Field
 import io.github.fpt.ktorfit.annotations.FieldMap
@@ -167,33 +168,53 @@ class KtorfitProcessor(environment: SymbolProcessorEnvironment) : SymbolProcesso
                 logger.warn("@Part/@PartMap should be used with @Multipart", method)
             }
             val bodyParam = params.firstOrNull { it.hasAnnotation(Body::class.java) }
+            val jsonFieldParams = params.filter { it.hasAnnotation(JsonField::class.java) }
             if ((httpInfo.multipart || httpInfo.formEncoded) && bodyParam != null) {
                 logger.warn("@Body should not be used with @Multipart/@FormUrlEncoded", method)
             }
             if (bodyParam != null && !httpInfo.hasBody) {
                 logger.warn("@Body is not supported by this HTTP method", method)
             }
+            if (bodyParam != null && jsonFieldParams.isNotEmpty()) {
+                logger.warn("@Body and @JsonField cannot be used together", method)
+            }
+            if (jsonFieldParams.isNotEmpty() && !httpInfo.hasBody) {
+                logger.warn("@JsonField requires HTTP method with body (POST/PUT/PATCH)", method)
+            }
+            if (jsonFieldParams.isNotEmpty() && (httpInfo.formEncoded || httpInfo.multipart)) {
+                logger.warn("@JsonField should not be used with @FormUrlEncoded/@Multipart", method)
+            }
 
-        val responseType = method.returnType!!.toTypeName()
+            if (returnType == null) {
+                return
+            }
 
             FunSpec.builder(method.simpleName.asString())
                 .addModifiers(KModifier.OVERRIDE, KModifier.SUSPEND)
                 .addParameters(params.map { it.toParameterSpec() })
-                .returns(returnType!!)
+                .returns(returnType)
                 .addCode(
                     buildCallBlock(
                         httpInfo = httpInfo,
                         params = params,
                         bodyParam = bodyParam,
+                        jsonFieldParams = jsonFieldParams,
                         methodHeaders = resolveHeaders(method),
-                        responseType = responseType
+                        responseType = returnType
                     )
                 )
                 .build()
         }
 
-        val fileSpec = FileSpec.builder(packageName, implName)
+        val anyMethodHasJsonFields = methods.any { m ->
+            val jsonParams = m.parameters.filter { it.hasAnnotation(JsonField::class.java) }
+            val info = resolveHttpInfo(m)
+            jsonParams.isNotEmpty() && info.hasBody && !info.formEncoded && !info.multipart
+        }
+        val fileSpecBuilder = FileSpec.builder(packageName, implName)
             .addImport("kotlin.reflect", "typeOf")
+            .let { if (anyMethodHasJsonFields) it.addImport("io.ktor.http.content", "TextContent").addImport("io.ktor.http", "ContentType") else it }
+        val fileSpec = fileSpecBuilder
             .addType(implType.addFunctions(funSpecs).build())
             .addProperty(autoRegisterProperty)
             .build()
@@ -282,6 +303,7 @@ class KtorfitProcessor(environment: SymbolProcessorEnvironment) : SymbolProcesso
         httpInfo: HttpInfo,
         params: List<KSValueParameter>,
         bodyParam: KSValueParameter?,
+        jsonFieldParams: List<KSValueParameter>,
         methodHeaders: List<Pair<String, String>>,
         responseType: com.squareup.kotlinpoet.TypeName,
     ): CodeBlock {
@@ -391,12 +413,42 @@ class KtorfitProcessor(environment: SymbolProcessorEnvironment) : SymbolProcesso
         }
 
         val bodyArg = bodyParam?.name?.asString()
-        val canUseBodyParam = httpInfo.hasBody &&
-                bodyArg != null &&
+        val useBodyParam = bodyArg != null &&
+                httpInfo.hasBody &&
                 !httpInfo.formEncoded &&
                 !httpInfo.multipart
 
-        val bodyExpr = if (canUseBodyParam) bodyArg else "null"
+        val hasJsonFields = jsonFieldParams.isNotEmpty() &&
+                httpInfo.hasBody &&
+                !httpInfo.formEncoded &&
+                !httpInfo.multipart
+
+        if (hasJsonFields) {
+            val jsonBodyBuilder = CodeBlock.builder()
+            jsonBodyBuilder.add("val jsonBody = kotlinx.serialization.json.buildJsonObject {\n")
+            jsonFieldParams.forEach { param ->
+                val paramName = param.name!!.asString()
+                val jsonFieldAnno = param.findAnnotation(JsonField::class.java)
+                val key = (jsonFieldAnno?.arguments?.firstOrNull()?.value as? String)?.takeIf { it.isNotBlank() }
+                    ?: paramName
+                jsonBodyBuilder.add(
+                    "if (%L != null) put(%S, when {\n  " +
+                        "%L is String -> kotlinx.serialization.json.JsonPrimitive(%L as kotlin.String)\n  " +
+                        "%L is Number -> kotlinx.serialization.json.JsonPrimitive(%L as kotlin.Number)\n  " +
+                        "%L is Boolean -> kotlinx.serialization.json.JsonPrimitive(%L as kotlin.Boolean)\n  " +
+                        "else -> kotlinx.serialization.json.JsonPrimitive(%L.toString())\n})\n",
+                    paramName, key, paramName, paramName, paramName, paramName, paramName, paramName, paramName
+                )
+            }
+            jsonBodyBuilder.add("}\n")
+            block.add(jsonBodyBuilder.build())
+        }
+
+        val bodyExpr = when {
+            useBodyParam -> bodyArg
+            hasJsonFields -> "TextContent(jsonBody.toString(), ContentType.Application.Json)"
+            else -> "null"
+        }
         val formFieldsExpr =
             if (httpInfo.formEncoded) "if (fields.isEmpty()) null else fields" else "null"
         val multipartExpr =
