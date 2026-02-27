@@ -27,14 +27,14 @@ repositories {
 ```kotlin
 dependencies {
     // 运行时 + 注解
-    implementation("com.github.fengpeitian.Ktorfit:ktorfit:1.1.0")
+    implementation("com.github.fengpeitian.Ktorfit:ktorfit:1.1.1")
 
     // KSP 处理器(根据情况选择)
-    add("kspCommonMainMetadata", "com.github.fengpeitian.Ktorfit:ktorfit-ksp:1.1.0")
-    add("kspAndroid", "com.github.fengpeitian.Ktorfit:ktorfit-ksp:1.1.0")
-    add("kspJvm", "com.github.fengpeitian.Ktorfit:ktorfit-ksp:1.1.0")
-    add("kspIosArm64", "com.github.fengpeitian.Ktorfit:ktorfit-ksp:1.1.0")
-    add("kspIosSimulatorArm64", "com.github.fengpeitian.Ktorfit:ktorfit-ksp:1.1.0")
+    add("kspCommonMainMetadata", "com.github.fengpeitian.Ktorfit:ktorfit-ksp:1.1.1")
+    add("kspAndroid", "com.github.fengpeitian.Ktorfit:ktorfit-ksp:1.1.1")
+    add("kspJvm", "com.github.fengpeitian.Ktorfit:ktorfit-ksp:1.1.1")
+    add("kspIosArm64", "com.github.fengpeitian.Ktorfit:ktorfit-ksp:1.1.1")
+    add("kspIosSimulatorArm64", "com.github.fengpeitian.Ktorfit:ktorfit-ksp:1.1.1")
 }
 ```
 
@@ -166,4 +166,4 @@ iOS 端使用 `@KtorfitEagerInit` 保证注册代码不会被裁剪。
 ## 版本与平台
 
 - 平台：Android / iOS / JVM(Desktop)
-- 版本：`1.1.0`
+- 版本：`1.1.1`

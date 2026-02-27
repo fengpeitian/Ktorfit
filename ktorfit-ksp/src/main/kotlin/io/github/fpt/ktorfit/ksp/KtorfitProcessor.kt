@@ -308,27 +308,27 @@ class KtorfitProcessor(environment: SymbolProcessorEnvironment) : SymbolProcesso
         responseType: com.squareup.kotlinpoet.TypeName,
     ): CodeBlock {
         val headers = CodeBlock.builder()
-            .addStatement("val headers = mutableListOf<Pair<String, String>>()")
+            .addStatement("val __requestHeaders = mutableListOf<Pair<String, String>>()")
             .build()
         val query = CodeBlock.builder()
-            .addStatement("val query = linkedMapOf<String, String>()")
+            .addStatement("val __queryParams = linkedMapOf<String, String>()")
             .build()
         val fields = CodeBlock.builder()
-            .addStatement("val fields = linkedMapOf<String, String>()")
+            .addStatement("val __formFields = linkedMapOf<String, String>()")
             .build()
         val parts = CodeBlock.builder()
-            .addStatement("val parts = linkedMapOf<String, Any?>()")
+            .addStatement("val __multipartParts = linkedMapOf<String, Any?>()")
             .build()
 
         val block = CodeBlock.builder()
-        block.addStatement("var path = %S", httpInfo.path)
+        block.addStatement("var __requestPath = %S", httpInfo.path)
         block.add(headers)
         block.add(query)
         block.add(fields)
         block.add(parts)
 
         methodHeaders.forEach { (key, value) ->
-            block.addStatement("headers.add(%S to %S)", key, value)
+            block.addStatement("__requestHeaders.add(%S to %S)", key, value)
         }
 
         params.forEach { param ->
@@ -344,14 +344,14 @@ class KtorfitProcessor(environment: SymbolProcessorEnvironment) : SymbolProcesso
             val urlAnno = param.findAnnotation(Url::class.java)
 
             if (urlAnno != null) {
-                block.addStatement("if (%L != null) path = %L.toString()", name, name)
+                block.addStatement("if (%L != null) __requestPath = %L.toString()", name, name)
             }
 
             if (queryAnno != null) {
                 val key = queryAnno.arguments.firstOrNull()?.value as? String
                 val queryName = if (key.isNullOrBlank()) name else key
                 block.addStatement(
-                    "if (%L != null) query[%S] = %L.toString()",
+                    "if (%L != null) __queryParams[%S] = %L.toString()",
                     name,
                     queryName,
                     name
@@ -360,7 +360,7 @@ class KtorfitProcessor(environment: SymbolProcessorEnvironment) : SymbolProcesso
             if (queryMapAnno != null) {
                 block.beginControlFlow("if (%L != null)", name)
                 block.addStatement(
-                    "%L.forEach { (k, v) -> if (v != null) query[k] = v.toString() }",
+                    "%L.forEach { (k, v) -> if (v != null) __queryParams[k] = v.toString() }",
                     name
                 )
                 block.endControlFlow()
@@ -370,7 +370,7 @@ class KtorfitProcessor(environment: SymbolProcessorEnvironment) : SymbolProcesso
                 val fieldName = if (key.isNullOrBlank()) name else key
                 if (httpInfo.formEncoded) {
                     block.addStatement(
-                        "if (%L != null) fields[%S] = %L.toString()",
+                        "if (%L != null) __formFields[%S] = %L.toString()",
                         name,
                         fieldName,
                         name
@@ -381,7 +381,7 @@ class KtorfitProcessor(environment: SymbolProcessorEnvironment) : SymbolProcesso
                 block.beginControlFlow("if (%L != null)", name)
                 if (httpInfo.formEncoded) {
                     block.addStatement(
-                        "%L.forEach { (k, v) -> if (v != null) fields[k] = v.toString() }",
+                        "%L.forEach { (k, v) -> if (v != null) __formFields[k] = v.toString() }",
                         name
                     )
                 }
@@ -390,24 +390,24 @@ class KtorfitProcessor(environment: SymbolProcessorEnvironment) : SymbolProcesso
             if (pathAnno != null) {
                 val key = pathAnno.arguments.firstOrNull()?.value as? String
                 val pathName = if (key.isNullOrBlank()) name else key
-                block.addStatement("path = path.replace(%S, %L.toString())", "{$pathName}", name)
+                block.addStatement("__requestPath = __requestPath.replace(%S, %L.toString())", "{$pathName}", name)
             }
             if (partAnno != null) {
                 val key = partAnno.arguments.firstOrNull()?.value as? String
                 val partName = if (key.isNullOrBlank()) name else key
-                block.addStatement("parts[%S] = %L", partName, name)
+                block.addStatement("__multipartParts[%S] = %L", partName, name)
             }
             if (partMapAnno != null) {
                 block.beginControlFlow("if (%L != null)", name)
-                block.addStatement("%L.forEach { (k, v) -> parts[k] = v }", name)
+                block.addStatement("%L.forEach { (k, v) -> __multipartParts[k] = v }", name)
                 block.endControlFlow()
             }
             if (headerAnno != null) {
                 val key = headerAnno.arguments.firstOrNull()?.value as? String
                 val headerName = if (key.isNullOrBlank()) name else key
                 block.beginControlFlow("if (%L != null)", name)
-                block.addStatement("headers.removeAll { it.first == %S }", headerName)
-                block.addStatement("headers.add(%S to %L.toString())", headerName, name)
+                block.addStatement("__requestHeaders.removeAll { it.first == %S }", headerName)
+                block.addStatement("__requestHeaders.add(%S to %L.toString())", headerName, name)
                 block.endControlFlow()
             }
         }
@@ -425,7 +425,7 @@ class KtorfitProcessor(environment: SymbolProcessorEnvironment) : SymbolProcesso
 
         if (hasJsonFields) {
             val jsonBodyBuilder = CodeBlock.builder()
-            jsonBodyBuilder.add("val jsonBody = kotlinx.serialization.json.buildJsonObject {\n")
+            jsonBodyBuilder.add("val __jsonBody = kotlinx.serialization.json.buildJsonObject {\n")
             jsonFieldParams.forEach { param ->
                 val paramName = param.name!!.asString()
                 val jsonFieldAnno = param.findAnnotation(JsonField::class.java)
@@ -446,16 +446,16 @@ class KtorfitProcessor(environment: SymbolProcessorEnvironment) : SymbolProcesso
 
         val bodyExpr = when {
             useBodyParam -> bodyArg
-            hasJsonFields -> "TextContent(jsonBody.toString(), ContentType.Application.Json)"
+            hasJsonFields -> "TextContent(__jsonBody.toString(), ContentType.Application.Json)"
             else -> "null"
         }
         val formFieldsExpr =
-            if (httpInfo.formEncoded) "if (fields.isEmpty()) null else fields" else "null"
+            if (httpInfo.formEncoded) "if (__formFields.isEmpty()) null else __formFields" else "null"
         val multipartExpr =
-            if (httpInfo.multipart) "if (parts.isEmpty()) null else parts" else "null"
+            if (httpInfo.multipart) "if (__multipartParts.isEmpty()) null else __multipartParts" else "null"
 
         val requestCall = CodeBlock.of(
-            "ktorfit.httpClient.request(%S, ktorfit.resolveUrl(path), headers, query, %L, $formFieldsExpr, $multipartExpr, %L, typeOf<%T>())",
+            "ktorfit.httpClient.request(%S, ktorfit.resolveUrl(__requestPath), __requestHeaders, __queryParams, %L, $formFieldsExpr, $multipartExpr, %L, typeOf<%T>())",
             httpInfo.method,
             bodyExpr,
             httpInfo.streaming,
